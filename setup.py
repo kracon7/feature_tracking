@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'img_subscriber = feature_tracking.rs_image_sub:main',
+            'optical_flow_test = feature_tracking.optical_flow_test:main',
         ],
     },
 )

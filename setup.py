@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'img_subscriber = feature_tracking.rs_image_sub:main',
             'optical_flow_test = feature_tracking.optical_flow_test:main',
+            'temporal_optical_flow_tracking = feature_tracking.temporal_optical_flow_tracking:main',
         ],
     },
 )

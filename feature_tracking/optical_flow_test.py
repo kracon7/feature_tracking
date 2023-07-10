@@ -6,18 +6,9 @@ from cv_bridge import CvBridge
 import cv2
  
 class ImageSubscriber(Node):
-    """
-    Create an ImageSubscriber class, which is a subclass of the Node class.
-    """
     def __init__(self):
-        """
-        Class constructor to set up the node
-        """
-        # Initiate the Node class's constructor and give it a name
         super().__init__('image_subscriber')
 
-        # Create the subscriber. This subscriber will receive an Image
-        # from the video_frames topic. The queue size is 10 messages.
         self.subscription = self.create_subscription(
                                         Image, 
                                         '/camera/color/image_rect_raw', 
@@ -25,7 +16,6 @@ class ImageSubscriber(Node):
                                         10)
         self.subscription # prevent unused variable warning
 
-        # Used to convert between ROS and OpenCV images
         self.br = CvBridge()
 
         self.frame_count = 1

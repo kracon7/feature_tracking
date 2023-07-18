@@ -9,13 +9,6 @@ FIELDS_XYZRGB = [
     PointField(name='rgb', offset=12, datatype=PointField.FLOAT32, count=1)
 ]
 
-dtype_list = [
-    ('x', np.dtype('float32')),
-    ('y', np.dtype('float32')),
-    ('z', np.dtype('float32')),
-    ('rgb', np.dtype('float32')),
-]
-    
 def np_pcd_to_colored_ros_pcd(
     points: np.ndarray, # shape (N, 3) dtype = float32
     colors: np.ndarray, # shape (N, 3) dtype = float32

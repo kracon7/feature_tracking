@@ -159,7 +159,7 @@ class ImageSubscriber(Node):
             del self.ft_track[t]
 
         self.get_logger().info("Old frames, ft_track size: %d"%len(self.ft_track))
-            
+
     def camera_k_callback(self, m):
         self.camera_k = m.k.reshape((3, 3))
         self.destroy_subscription(self.camera_k_subscription)

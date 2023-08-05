@@ -54,6 +54,7 @@ setup(
         'console_scripts': [
             'img_subscriber = feature_tracking.rs_image_sub:main',
             'optical_flow_test = feature_tracking.optical_flow_test:main',
+            'cv2_temporal_tracking = feature_tracking.temporal_optical_flow_tracking:main',
             'record_3d = feature_tracking.record_3d_tracking_trajectory:main',
             'visualize_3d = feature_tracking.visualize_3d_tracking:main',
             'replay_3d = feature_tracking.replay_3d_tracking:main',

@@ -1,4 +1,9 @@
+from typing import List
+from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import Header
+from geometry_msgs.msg import Point
 from sensor_msgs.msg import PointCloud2, PointField
 import numpy as np
 
@@ -62,3 +67,69 @@ def np_pcd_to_ros_pcd(pcd: np.ndarray, frame_id: str) -> np.ndarray:
         row_step=(itemsize * len(columns) * pcd.shape[0]),
         data=data
     )
+
+
+
+class MotionFieldVisualizer(Node):
+    def __init__(self) -> None:
+        super().__init__('MotionFieldVisualizer')
+        qos_profile = QoSProfile(depth=10)
+        self.mfield_publisher = self.create_publisher(
+            MarkerArray, f"/mfield_markers", qos_profile
+        )
+
+        self.num_color = 100
+        self.colors = np.random.rand(self.num_color, 3)
+
+    def visualize_mfield(self, 
+                         track_ids: List[int],
+                         mfield_locs: List[np.ndarray],
+                         mfield_vecs: List[np.ndarray],
+                         frame_id: str = 'camera_link',
+                        ):
+        add_marker_array = MarkerArray()
+        delete_marker_array = MarkerArray()
+
+        for idx in range(len(track_ids)):
+            loc = mfield_locs[idx]
+            vec = mfield_vecs[idx]
+            color = self.colors[idx%self.num_color]
+            arrow_marker = get_arrow_marker(idx, frame_id, loc, vec, rgb=color)
+            add_marker_array.markers.append(arrow_marker)
+
+        deletion_marker = Marker()
+        deletion_marker.header.frame_id = frame_id
+        deletion_marker.action = Marker.DELETEALL
+        delete_marker_array.markers.append(deletion_marker)
+        
+        self.mfield_publisher.publish(delete_marker_array)
+        self.mfield_publisher.publish(add_marker_array)
+
+    
+def get_arrow_marker(
+        marker_id: int,
+        frame_id: str,
+        loc: np.ndarray,
+        vec: np.ndarray,
+        rgb: List[float] = [200.0, 200.0, 200.0],
+        alpha=1.0
+    ):
+        marker = Marker()
+        marker.type = marker.ARROW
+        marker.header.frame_id = frame_id
+        marker.id = marker_id
+        tail = Point(x=loc[0], 
+                     y=loc[1], 
+                     z=loc[2])
+        tip = Point(x=loc[0]+vec[0], 
+                    y=loc[1]+vec[1], 
+                    z=loc[2]+vec[2])
+        marker.points = [ tail, tip ]
+        marker.scale.x = 0.005
+        marker.scale.y = 0.01
+        marker.scale.z = 0.02
+        marker.color.r = rgb[0]
+        marker.color.g = rgb[1]
+        marker.color.b = rgb[2]
+        marker.color.a = alpha
+        return marker

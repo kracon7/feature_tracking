@@ -1,3 +1,13 @@
+import numpy as np
+from numpy.lib import recfunctions as rfn
+import cv2
+
+# Structure array data type for frame 
+feature_dtype = np.dtype([('pix', 'f8', (2)),
+                          ('pos', 'f8', (3)),
+                          ('track_id', 'int32'),
+                          ('desc', 'f8', (128))])
+
 class Node:
     def __init__(self):
         self.next = None
@@ -80,27 +90,34 @@ class FeatureTrack(DoublyLinkedList):
         return " -> ".join(nodes)
 
 class FrameNode(Node):
-    def __init__(self, timestamp: float):
+    def __init__(self, timestamp: float, rgb: np.array, depth: np.array):
         super().__init__()
         self.timestamp = timestamp
-        self.pts = {}
+        self.rgb = rgb
+        self.depth = depth
+        self.gray = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+        self.pts = []
 
-    def add_pt(self, point_feature: FeaturePoint):
-        if point_feature.timestamp != self.timestamp:
-            raise Exception("Mismatch between FeatureFrame time and FeaturePoint")
-        
-        self.pts[point_feature.track_id] = point_feature
+    def add_pt(self, point_feature: FeaturePoint):        
+        pt = np.zeros(1, dtype=feature_dtype)
+        pt['pix'] = point_feature.pix
+        pt['pos'] = point_feature.pos
+        pt['track_id'] = point_feature.track_id
+        pt['desc'] = point_feature.desc
+        self.pts.append(pt)
 
     def get_pts_info(self):
-        track_ids, pos, pix = [], [], []
-        for i, pt in self.pts.items():
-            track_ids.append(i)
-            pos.append(pt.pos)
-            pix.append(pt.pix)
+        pts = rfn.stack_arrays(self.pts)
+        track_ids, pos, pix = pts['track_id'], pts['pos'], pts['pix']
+        track_ids = np.ma.getdata(track_ids)
+        pos = np.ma.getdata(pos)
+        pix = np.ma.getdata(pix)
         return track_ids, pos, pix
 
     def __repr__(self):
-        return "%d pts"%(len(self.pts))
+        ids, _, _ = self.get_pts_info()
+        ids = ['%d'%i for i in ids]
+        return " ".join(ids)
 
 class FrameTrack(DoublyLinkedList):
     def __init__(self):
@@ -132,34 +149,35 @@ class FrameTrack(DoublyLinkedList):
             nodes.append(repr(node))
             node = node.prev
         nodes.append("None")
-        return " -> ".join(nodes)
+        return " || -> || ".join(nodes)
 
 
 class FeatureManager:
     def __init__(self) -> None:
         self.feature_tracks = {}
         self.frame_track = FrameTrack()
-        ############# To Do ##################
-        ## Num Tracks
         self.num_tracks = 0
-        self.max_num_frames = 40
+        self.max_num_frames = 10
+        self.min_track_length = 3
 
-    def add_feature_points(self, feature_points: list):
-        print("****** FeatureManager, adding new frame with",
-              " %d feature points"%(len(feature_points)))
-        timestamp = feature_points[0].timestamp
-        self.frame_track.push(FrameNode(timestamp))
-        
-        for feature_pt in feature_points:
-            k = feature_pt.track_id
-            if k in self.feature_tracks:
-                self.feature_tracks[k].push(feature_pt)
-                print("Add a new point to track %d"%k)
+    def push_feature_points(self, feature_points: list):
+        for feature_point in feature_points:
+            if feature_point.track_id == -1:
+                # print("Adding a new feature track %d"%(self.num_tracks))
+                track_id = self.num_tracks
+                feature_point.track_id = track_id
+                new_track = FeatureTrack(track_id)
+                self.feature_tracks[track_id] = new_track
+                self.num_tracks += 1
             else:
-                new_track = FeatureTrack(k)
-                new_track.push(feature_pt)
-                self.feature_tracks[k] = new_track
-                print("Init a new track %d"%k)
+                track_id = feature_point.track_id
+                # print("Add point to an existing feature track %d"%(track_id))
+            
+            # Update feature track
+            self.feature_tracks[track_id].push(feature_point)
+            
+            # Update frame node
+            self.frame_track.latest.add_pt(feature_point)
 
         self._clean_frame_buffer()
 
@@ -170,11 +188,18 @@ class FeatureManager:
         while self.frame_track.length > self.max_num_frames:
             # Remove the oldest point feature from tracks
             ids, _, _ = self.frame_track.oldest.get_pts_info()
-            for k in ids:
-                self.feature_tracks[k].pop()
-                # If track is too short to estimate the velocity
-                if self.feature_tracks[k].length < 2:
-                    self.feature_tracks.pop(k)
-            
+
             # Remove the oldest frame
             self.frame_track.pop()
+
+            # Clean feature tracks
+            for k in ids:
+                # Track might have been deleted for insufficient length
+                if k in self.feature_tracks:
+                    self.feature_tracks[k].pop()
+
+                    # If track is too short to estimate the velocity
+                    if self.feature_tracks[k].length < self.min_track_length:
+                        self.feature_tracks.pop(k)
+                
+            

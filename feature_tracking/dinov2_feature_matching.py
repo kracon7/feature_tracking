@@ -14,6 +14,7 @@ class FeatureExtractor:
             img -- (numpy.ndarray) shape (w, h, 3)
         '''
         self.dino_model = dino_model
+        self.embed_dim = dino_model.embed_dim
         self.dino_transform = T.Compose([
                 T.Normalize(mean=[0.5], std=[0.5]),
                 ])
@@ -22,8 +23,9 @@ class FeatureExtractor:
         self.crop_w = (w - w%14) - 14
         self.patch_h, self.patch_w = self.crop_h // 14, self.crop_w // 14
 
-        self.offset = np.stack(np.meshgrid(np.linspace(0, 15, 6), 
-                                    np.linspace(0, 15, 6),
+        self.stride = 2
+        self.offset = np.stack(np.meshgrid(np.arange(0, 14, self.stride), 
+                                    np.arange(0, 14, self.stride),
                                     indexing='ij'),
                         axis=-1).reshape(-1, 2).astype('uint8')
         self.batch_size = self.offset.shape[0]
@@ -34,7 +36,7 @@ class FeatureExtractor:
         '''
         Crop and shift image every 3 pixels
         '''
-        aug_img = np.zeros((36, self.crop_h, self.crop_w, 3))
+        aug_img = np.zeros((self.batch_size, self.crop_h, self.crop_w, 3))
         for i, (dh, dw) in enumerate(self.offset):
             aug_img[i] = img[dh:self.crop_h+dh, dw:self.crop_w+dw]
 
@@ -49,8 +51,13 @@ class FeatureExtractor:
             patch_tok = ret["x_norm_patchtokens"].view(self.batch_size, 
                                                        self.patch_h, 
                                                        self.patch_w, 
-                                                       -1)
-        return patch_tok
+                                                       self.embed_dim)
+        patch_tok = patch_tok.permute([1,2,0,3]).reshape(
+                self.patch_h, self.patch_w, self.grid_size, self.grid_size, self.embed_dim)
+        feature = torch.cat([torch.cat(list(patch_tok[i]), dim=1) 
+                             for i in range(self.patch_h)], 
+                             dim=0)
+        return feature
 
 
 def main(args):
@@ -69,7 +76,6 @@ def main(args):
         feature = feature_extractor.extract_feature(frame)
 
         print("Feature extraction takes: %.2fms"%(1e3 * (time.time() - now)))
-        
 
 
 if __name__ == "__main__":

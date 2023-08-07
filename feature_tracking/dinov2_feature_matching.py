@@ -70,9 +70,9 @@ class FeatureExtractor:
                                                     self.patch_h, 
                                                     self.patch_w, 
                                                     self.embed_dim)
-        patch_tok = patch_tok.permute([1,2,0,3]).reshape(
+        embedings = embedings.permute([1,2,0,3]).reshape(
                 self.patch_h, self.patch_w, self.grid_size, self.grid_size, self.embed_dim)
-        embedings = torch.cat([torch.cat(list(patch_tok[i]), dim=1) 
+        embedings = torch.cat([torch.cat(list(embedings[i]), dim=1) 
                              for i in range(self.patch_h)], 
                              dim=0)
         return embedings

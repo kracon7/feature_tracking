@@ -8,14 +8,24 @@ import argparse
 import time
 import torch
 
+class DINOV2Encoder(nn.Module):
+    def __init__(self, dinov2_model):
+        super(DINOV2Encoder, self).__init__()
+        self.dinov2_model = dinov2_model
+
+    def forward(self, input):
+        ret = self.dinov2_model.forward_features(input)
+        patch_tok = ret["x_norm_patchtokens"]
+        return patch_tok
+
 class FeatureExtractor:
-    def __init__(self, dino_model, img, embed_dim, device='cuda') -> None:
+    def __init__(self, encoder, img, embed_dim, device='cuda') -> None:
         '''
         Args:
             dino_model -- DINO v2 model
             img -- (numpy.ndarray) shape (w, h, 3)
         '''
-        self.dino_model = dino_model
+        self.encoder = encoder
         self.device = device
         self.embed_dim = embed_dim
         self.dino_transform = T.Compose([
@@ -56,11 +66,10 @@ class FeatureExtractor:
         img_tensor = self.densify(img)
         dino_im = self.dino_transform(img_tensor).float().cuda()
         with torch.no_grad():
-            ret = self.dino_model.forward_features(dino_im)
-            patch_tok = ret["x_norm_patchtokens"].view(self.batch_size, 
-                                                       self.patch_h, 
-                                                       self.patch_w, 
-                                                       self.embed_dim)
+            embedings = self.encoder(dino_im).view(self.batch_size, 
+                                                    self.patch_h, 
+                                                    self.patch_w, 
+                                                    self.embed_dim)
         patch_tok = patch_tok.permute([1,2,0,3]).reshape(
                 self.patch_h, self.patch_w, self.grid_size, self.grid_size, self.embed_dim)
         embedings = torch.cat([torch.cat(list(patch_tok[i]), dim=1) 
@@ -100,12 +109,13 @@ class FeatureExtractor:
 def main(args):
     cap = cv2.VideoCapture(args.video)
     dinov2_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').cuda()
+    dinov2_encoder = DINOV2Encoder(dinov2_model)
     embed_dim = dinov2_model.embed_dim
     if args.parallel:
-        dinov2_model = torch.nn.DataParallel(dinov2_model, device_ids=[0,1,2,3])
+        dinov2_encoder = torch.nn.DataParallel(dinov2_encoder)
 
     ret, first_frame = cap.read()
-    feature_extractor = FeatureExtractor(dinov2_model, first_frame, embed_dim)
+    feature_extractor = FeatureExtractor(dinov2_encoder, first_frame, embed_dim)
 
     # Extract features in the first frame
     old_embedings = feature_extractor.extract_feature(first_frame)

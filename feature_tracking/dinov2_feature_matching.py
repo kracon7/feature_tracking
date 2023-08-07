@@ -9,18 +9,15 @@ import time
 import torch
 
 class FeatureExtractor:
-    def __init__(self, dino_model, img) -> None:
+    def __init__(self, dino_model, img, embed_dim, device='cuda') -> None:
         '''
         Args:
             dino_model -- DINO v2 model
             img -- (numpy.ndarray) shape (w, h, 3)
         '''
         self.dino_model = dino_model
-        if next(dino_model.parameters()).is_cuda:
-            self.device = 'cuda'
-        else:
-            raise Exception("DINO V2 model is not on GPU!!")
-        self.embed_dim = dino_model.embed_dim
+        self.device = device
+        self.embed_dim = embed_dim
         self.dino_transform = T.Compose([
                 T.Normalize(mean=[0.5], std=[0.5]),
                 ])
@@ -102,10 +99,13 @@ class FeatureExtractor:
 
 def main(args):
     cap = cv2.VideoCapture(args.video)
-    dinov2_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').cuda().eval()
+    dinov2_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').cuda()
+    embed_dim = dinov2_model.embed_dim
+    if args.parallel:
+        dinov2_model = torch.nn.DataParallel(dinov2_model, device_ids=[0,1,2,3])
 
     ret, first_frame = cap.read()
-    feature_extractor = FeatureExtractor(dinov2_model, first_frame)
+    feature_extractor = FeatureExtractor(dinov2_model, first_frame, embed_dim)
 
     # Extract features in the first frame
     old_embedings = feature_extractor.extract_feature(first_frame)
@@ -135,6 +135,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
             description="",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--parallel', action="store_true", default=False)
     parser.add_argument("--video", type=str,
                         default="")
 

@@ -58,6 +58,7 @@ setup(
             'record_3d = feature_tracking.record_3d_tracking_trajectory:main',
             'visualize_3d = feature_tracking.visualize_3d_tracking:main',
             'replay_3d = feature_tracking.replay_3d_tracking:main',
+            'rs_pcd_snapshot = feature_tracking.rs_pcd_snapshot:main',
         ],
     },
 )

@@ -6,6 +6,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import Point
 from sensor_msgs.msg import PointCloud2, PointField
 import numpy as np
+import sys, termios, tty
 
 FIELDS_XYZRGB = [
     PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
@@ -13,6 +14,19 @@ FIELDS_XYZRGB = [
     PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
     PointField(name='rgb', offset=12, datatype=PointField.FLOAT32, count=1)
 ]
+
+def wait_for_user_input(prompt: str = None):
+    if prompt:
+        print(prompt)
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
+
 
 def np_pcd_to_colored_ros_pcd(
     points: np.ndarray, # shape (N, 3) dtype = float32

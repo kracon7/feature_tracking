@@ -4,23 +4,15 @@ import numpy as np
 import cv2
 import argparse
 
-
-def main(args):
-    pipeline = rs.pipeline()
-    config = rs.config()
-    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-
+def record_video(args, rs_pipeline):
     color_path = os.path.join(args.output_dir, 'rs_rgb.avi')
-    depth_path = os.path.join(args.output_dir, 'rs_depth.avi')
-    colorwriter = cv2.VideoWriter(color_path, cv2.VideoWriter_fourcc(*'XVID'), 30, (640,480), 1)
-    depthwriter = cv2.VideoWriter(depth_path, cv2.VideoWriter_fourcc(*'XVID'), 30, (640,480), 1)
-
-    pipeline.start(config)
-
+    depth_path = os.path.join(args.output_dir, 'rs_depth.npy')
+    colorwriter = cv2.VideoWriter(color_path, cv2.VideoWriter_fourcc(*'XVID'), 30, (args.width, args.height), 1)
+    depth_frames = []
+    
     try:
         while True:
-            frames = pipeline.wait_for_frames()
+            frames = rs_pipeline.wait_for_frames()
             depth_frame = frames.get_depth_frame()
             color_frame = frames.get_color_frame()
             if not depth_frame or not color_frame:
@@ -29,25 +21,36 @@ def main(args):
             #convert images to numpy arrays
             depth_image = np.asanyarray(depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
-            depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
+            depth_frames.append(depth_image)
             
             colorwriter.write(color_image)
-            depthwriter.write(depth_colormap)
             
-            cv2.imshow('Stream', depth_colormap)
+            cv2.imshow('Stream', color_image)
             
             if cv2.waitKey(1) == ord("q"):
                 break
     finally:
         colorwriter.release()
-        depthwriter.release()
-        pipeline.stop()
+        np.save(depth_path, np.stack(depth_frames))
+
+
+def main(args):
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_stream(rs.stream.depth, args.width, args.height, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, 30)
+    pipeline.start(config)
+
+    record_video(args, pipeline)
+    pipeline.stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--output_dir", "-o", type=str,
                         default="resource")
     args = parser.parse_args()

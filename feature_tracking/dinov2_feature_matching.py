@@ -118,7 +118,7 @@ class FeatureExtractor:
                              dim=0)
         return embedings
 
-    def calculate_flow(self, old_embedings, new_embedings, old_locs, threshold=0.9):
+    def calculate_flow(self, old_embedings, new_embedings, old_locs, threshold=0.95, confidence=1.2):
         '''
         Window search between old_embedings and new_embedings at locations
         defined by locs.
@@ -148,6 +148,11 @@ class FeatureExtractor:
                              match_idx % self.win_size - self.search_range]).T
         new_locs = old_locs + shift
         status = top_similarity > threshold
+
+        # Confidence filter
+        ave_similarity = torch.mean(similarity, dim=1)
+        status = status & ((top_similarity / ave_similarity) > confidence)
+
         return new_locs, status
     
     def locs_to_pixels(self, locs):
@@ -161,7 +166,7 @@ class FeatureExtractor:
 
 
 def main(args):
-    mpl_color_helper = MplColorHelper('seismic', 0, 12)
+    mpl_color_helper = MplColorHelper('binary', 0, 20)
 
     cap = cv2.VideoCapture(args.video)
     dinov2_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14').cuda()
@@ -208,7 +213,7 @@ def main(args):
                                      (end[1], end[0]),
                                      color,
                                      1,
-                                     tipLength=0.5)
+                                     tipLength=0.2)
         result = cv2.add(prev_frame, canvas)
         cv2.imshow('Optical Flow (sparse)', result)
         cv2.waitKey(1)

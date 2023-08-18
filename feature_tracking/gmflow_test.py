@@ -1,17 +1,19 @@
 import torch
-
+from glob import glob
 import argparse
 import numpy as np
 import os
+from PIL import Image
 from gmflow.gmflow import GMFlow
-from gmflow_evaluate import inference_on_dir
+from gmflow_utils.frame_utils import read_gen
+from gmflow_evaluate import inference_on_dir, FlowPredictor
 
 def get_args_parser():
     parser = argparse.ArgumentParser()
 
     # dataset
-    parser.add_argument('--checkpoint_dir', default='tmp', type=str,
-                        help='where to save the training log and models')
+    parser.add_argument('--checkpoint', default='', type=str,
+                        help='where to load the checkpoint for the model')
     parser.add_argument('--stage', default='chairs', type=str,
                         help='training stage')
     parser.add_argument('--image_size', default=[384, 512], type=int, nargs='+',
@@ -64,22 +66,14 @@ def get_args_parser():
 
     # inference on a directory
     parser.add_argument('--inference_dir', default=None, type=str)
-    parser.add_argument('--inference_size', default=None, type=int, nargs='+',
-                        help='can specify the inference size')
-    parser.add_argument('--dir_paired_data', action='store_true',
-                        help='Paired data in a dir instead of a sequence')
-    parser.add_argument('--save_flo_flow', action='store_true')
     parser.add_argument('--pred_bidir_flow', action='store_true',
                         help='predict bidirectional flow')
     parser.add_argument('--fwd_bwd_consistency_check', action='store_true',
                         help='forward backward consistency check with bidirection flow')
 
-    parser.add_argument('--output_path', default='output', type=str,
+    parser.add_argument('--output_dir', '-o', default='output', type=str,
                         help='where to save the prediction results')
-    parser.add_argument('--save_vis_flow', action='store_true',
-                        help='visualize flow prediction as .png image')
-    parser.add_argument('--no_save_flo', action='store_true',
-                        help='not save flow as .flo')
+    parser.add_argument('--save_raw', action='store_true')
 
     # distributed training
     parser.add_argument('--local_rank', default=0, type=int)
@@ -89,6 +83,9 @@ def get_args_parser():
 
     parser.add_argument('--count_time', action='store_true',
                         help='measure the inference time on sintel')
+    
+    parser.add_argument('--finger_mask', '-m', default='tmp', type=str,
+                        help='where to load finger mask')
 
     return parser
 
@@ -101,7 +98,15 @@ def main(args):
 
     torch.backends.cudnn.benchmark = True
     device = torch.device('cuda:{}'.format(args.local_rank))
+    
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(args.local_rank)
 
+    finger_mask_tensor = torch.tensor(np.asarray(Image.open(args.finger_mask)),
+                                   device=device)
+    finger_mask = finger_mask_tensor[:,:,0] > 0
+
+    
     # model
     model = GMFlow(feature_channels=args.feature_channels,
                    num_scales=args.num_scales,
@@ -141,19 +146,83 @@ def main(args):
 
         model_without_ddp.load_state_dict(weights, strict=args.strict_resume)
 
-    inference_on_dir(model_without_ddp,
-                        inference_dir=args.inference_dir,
-                        output_path=args.output_path,
-                        padding_factor=args.padding_factor,
-                        inference_size=args.inference_size,
-                        paired_data=args.dir_paired_data,
-                        save_flo_flow=args.save_flo_flow,
-                        attn_splits_list=args.attn_splits_list,
-                        corr_radius_list=args.corr_radius_list,
-                        prop_radius_list=args.prop_radius_list,
-                        pred_bidir_flow=args.pred_bidir_flow,
-                        fwd_bwd_consistency_check=args.fwd_bwd_consistency_check,
-                        )
+
+
+
+
+
+
+    # model
+    model = GMFlow(feature_channels=args.feature_channels,
+                   num_scales=args.num_scales,
+                   upsample_factor=args.upsample_factor,
+                   num_head=args.num_head,
+                   attention_type=args.attention_type,
+                   ffn_dim_expansion=args.ffn_dim_expansion,
+                   num_transformer_layers=args.num_transformer_layers,
+                   ).to(device)
+
+    num_params = sum(p.numel() for p in model.parameters())
+    print('Number of params:', num_params)
+    
+    flow_predictor = FlowPredictor(model, 
+                                   args.attn_splits_list,
+                                   args.corr_radius_list,
+                                   args.prop_radius_list,)
+    
+    # resume checkpoints
+    if args.resume:
+        print('Load checkpoint: %s' % args.resume)
+
+        loc = 'cuda:{}'.format(args.local_rank)
+        checkpoint = torch.load(args.resume, map_location=loc)
+
+        weights = checkpoint['model'] if 'model' in checkpoint else checkpoint
+
+        model.load_state_dict(weights, strict=args.strict_resume)
+
+    # # resume checkpoints
+    # if args.checkpoint != '':
+    #     print('Load checkpoint: %s' % args.checkpoint)
+
+    #     loc = 'cuda:{}'.format(args.local_rank)
+    #     checkpoint = torch.load(args.resume, map_location=loc)
+    #     weights = checkpoint['model'] if 'model' in checkpoint else checkpoint
+    #     model.load_state_dict(weights, strict=args.strict_resume)
+
+    flow_mag_dir = os.path.join(args.output_dir, 'flow_mag_pred')
+    flow_rad_dir = os.path.join(args.output_dir, 'flow_rad_pred')
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(flow_mag_dir, exist_ok=True)
+    os.makedirs(flow_rad_dir, exist_ok=True)
+    if args.save_raw:
+        raw_dir = os.path.join(args.output_dir, 'flow_raw_pred') 
+        os.makedirs(raw_dir, exist_ok=True)
+
+    filenames = sorted(glob(args.inference_dir + '/*'))
+    print('%d images found' % len(filenames))
+
+    for test_id in range(len(filenames) - 1):
+
+        image1 = read_gen(filenames[test_id])
+        image2 = read_gen(filenames[test_id + 1])
+
+        image1 = np.array(image1).astype(np.uint8)
+        image2 = np.array(image2).astype(np.uint8)
+
+        if len(image1.shape) == 2:  # gray image, for example, HD1K
+            image1 = np.tile(image1[..., None], (1, 1, 3))
+            image2 = np.tile(image2[..., None], (1, 1, 3))
+        else:
+            image1 = image1[..., :3]
+            image2 = image2[..., :3]
+
+        image1 = torch.from_numpy(image1).permute(2, 0, 1).float()
+        image2 = torch.from_numpy(image2).permute(2, 0, 1).float()
+
+        flow_predictor.pred(image1, image2, finger_mask)
+
+
 
 
 if __name__ == '__main__':

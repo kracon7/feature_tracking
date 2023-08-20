@@ -1,0 +1,22 @@
+python gmflow_utils/make_eval_video.py -d ~/tmp/gmflow_gt_slow/ -o ~/tmp/gmflow_gt_slow/tmp.avi 
+
+python compute_gmflow_gt.py 
+-d ~/tmp/gmflow_gt_slow/depth/ 
+-p ~/tmp/gmflow_gt_slow/pose/ 
+-o ~/tmp/gmflow_gt_slow/ 
+-m ~/tmp/mask.png 
+-k ~/tmp/gmflow_gt_slow/camera_k.txt 
+
+
+python gmflow_test.py 
+--resume ~/code/gmflow/tmp/pretrained/gmflow_with_refine_things-36579974.pth 
+--inference_dir ~/tmp/gmflow_gt_slow/png/ 
+-o ~/tmp/gmflow_gt_slow/ 
+-m ~/tmp/mask.png 
+--with_speed_metric 
+--padding_factor 32 
+--upsample_factor 4 
+--num_scales 2 
+--attn_splits_list 2 8 
+--corr_radius_list -1 4 
+--prop_radius_list -1 1

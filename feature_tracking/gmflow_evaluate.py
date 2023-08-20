@@ -4,6 +4,9 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 from gmflow_utils import frame_utils
 from gmflow_utils.flow_viz import save_vis_flow_tofile
@@ -13,6 +16,67 @@ from glob import glob
 from gmflow.geometry import forward_backward_consistency_check
 
 
+class FlowPredictor:
+    def __init__(self, model, 
+                 padding_factor,
+                 inference_size,
+                 attn_splits_list=None,
+                 corr_radius_list=None,
+                 prop_radius_list=None,
+                 pred_bidir_flow=False,):
+        self.model = model
+        self.padding_factor = padding_factor
+        self.inference_size = inference_size
+        self.attn_splits_list = attn_splits_list
+        self.corr_radius_list = corr_radius_list
+        self.prop_radius_list = prop_radius_list
+        self.pred_bidir_flow = pred_bidir_flow
+
+    def pred(self, img_1: torch.tensor, img_2: torch.tensor, mask: torch.tensor):
+        
+        if self.inference_size is None:
+            padder = InputPadder(img_1.shape, padding_factor=self.padding_factor)
+            img_1, img_2 = padder.pad(img_1[None].cuda(), img_2[None].cuda())
+        else:
+            img_1, img_2 = img_1[None].cuda(), img_2[None].cuda()
+
+        # resize before inference
+        if self.inference_size is not None:
+            assert isinstance(self.inference_size, list) or isinstance(self.inference_size, tuple)
+            ori_size = image1.shape[-2:]
+            image1 = F.interpolate(image1, size=self.inference_size, mode='bilinear',
+                                   align_corners=True)
+            image2 = F.interpolate(image2, size=self.inference_size, mode='bilinear',
+                                   align_corners=True)
+
+        with torch.no_grad():
+            now = time.time()
+            results_dict = self.model(
+                                img_1, img_2,
+                                attn_splits_list=self.attn_splits_list,
+                                corr_radius_list=self.corr_radius_list,
+                                prop_radius_list=self.prop_radius_list,
+                                pred_bidir_flow=self.pred_bidir_flow,
+                                )
+            print("Inference time: %.2fms"%((time.time() - now) * 1e3))
+            flow_pr = results_dict['flow_preds'][-1]  # [B, 2, H, W]
+            flow = flow_pr[0].permute(1, 2, 0)  # [H, W, 2]
+        if mask is not None:
+            flow[mask] = 0
+        return flow
+
+
+class MplColorHelper:
+    def __init__(self, cmap_name, start_val, stop_val):
+        self.cmap_name = cmap_name
+        self.cmap = plt.get_cmap(cmap_name)
+        self.norm = mpl.colors.Normalize(vmin=start_val, vmax=stop_val)
+        self.scalarMap = cm.ScalarMappable(norm=self.norm, cmap=self.cmap)
+
+    def get_rgb(self, val):
+        rgba = self.scalarMap.to_rgba(val)
+        return rgba
+
 @torch.no_grad()
 def inference_on_dir(model,
                      inference_dir,
@@ -20,12 +84,12 @@ def inference_on_dir(model,
                      padding_factor=8,
                      inference_size=None,
                      paired_data=False,  # dir of paired testdata instead of a sequence
-                     save_flo_flow=False,  # save as .flo for quantative evaluation
                      attn_splits_list=None,
                      corr_radius_list=None,
                      prop_radius_list=None,
                      pred_bidir_flow=False,
                      fwd_bwd_consistency_check=False,
+                     mask=None
                      ):
     """ Inference on a directory """
     model.eval()
@@ -33,8 +97,10 @@ def inference_on_dir(model,
     if fwd_bwd_consistency_check:
         assert pred_bidir_flow
 
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    os.makedirs(output_path, exist_ok=True)
+
+    raw_dir = os.path.join(os.path.dirname(output_path), 'raw_flow') 
+    os.makedirs(raw_dir, exist_ok=True)
 
     filenames = sorted(glob(inference_dir + '/*'))
     print('%d images found' % len(filenames))
@@ -100,10 +166,22 @@ def inference_on_dir(model,
         else:
             flow = flow_pr[0].permute(1, 2, 0).cpu().numpy()  # [H, W, 2]
 
-        output_file = os.path.join(output_path, os.path.basename(filenames[test_id])[:-4] + '_flow.png')
+        output_file = os.path.join(output_path, 
+                                   os.path.basename(filenames[test_id])[:-4] + '_flow.png')
 
-        # save vis flow
+        # Apply finger mask
+        if mask is not None:
+            flow[mask] = 0
+
+        # save flow visualization
         save_vis_flow_tofile(flow, output_file)
+
+        # save raw flow
+        flow_output_file = os.path.join(raw_dir,
+                                        os.path.basename(filenames[test_id])[:-4] + '_flow.npy')
+        np.save(flow_output_file, flow)
+
+
 
         # also predict backward flow
         if pred_bidir_flow:
@@ -136,7 +214,3 @@ def inference_on_dir(model,
 
                 Image.fromarray((fwd_occ[0].cpu().numpy() * 255.).astype(np.uint8)).save(fwd_occ_file)
                 Image.fromarray((bwd_occ[0].cpu().numpy() * 255.).astype(np.uint8)).save(bwd_occ_file)
-
-        if save_flo_flow:
-            output_file = os.path.join(output_path, os.path.basename(filenames[test_id])[:-4] + '_pred.flo')
-            frame_utils.writeFlow(output_file, flow)

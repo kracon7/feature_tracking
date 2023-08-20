@@ -254,6 +254,9 @@ def flow_to_image(flow):
     u[idxUnknow] = 0
     v[idxUnknow] = 0
 
+    #### To Do ####
+    # Filter flow that are too small
+
     maxu = max(maxu, np.max(u))
     minu = min(minu, np.min(u))
 

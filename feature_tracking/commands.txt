@@ -8,15 +8,15 @@ python compute_gmflow_gt.py
 -k ~/tmp/gmflow_gt_slow/camera_k.txt 
 
 
-python gmflow_test.py 
---resume ~/code/gmflow/tmp/pretrained/gmflow_with_refine_things-36579974.pth 
---inference_dir ~/tmp/gmflow_gt_slow/png/ 
--o ~/tmp/gmflow_gt_slow/ 
--m ~/tmp/mask.png 
---with_speed_metric 
---padding_factor 32 
---upsample_factor 4 
---num_scales 2 
---attn_splits_list 2 8 
---corr_radius_list -1 4 
---prop_radius_list -1 1
+python gmflow_test.py \
+--resume ~/code/gmflow/tmp/pretrained/gmflow_with_refine_things-36579974.pth \
+--inference_dir ~/tmp/gmflow_gt_slow/png/ \
+-o ~/tmp/gmflow_gt_slow/ \
+-m ~/tmp/mask.png \
+--with_speed_metric \
+--padding_factor 32 \
+--upsample_factor 4 \
+--num_scales 2 \
+--attn_splits_list 2 8 \
+--corr_radius_list -1 4 \
+--prop_radius_list -1 1 

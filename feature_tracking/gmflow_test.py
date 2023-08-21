@@ -126,13 +126,14 @@ def main(args):
             output_device=args.local_rank)
         model_without_ddp = model.module
     else:
-        if torch.cuda.device_count() > 1:
-            print('Use %d GPUs' % torch.cuda.device_count())
-            model = torch.nn.DataParallel(model)
+        # if torch.cuda.device_count() > 1:
+        #     print('Use %d GPUs' % torch.cuda.device_count())
+        #     model = torch.nn.DataParallel(model)
 
-            model_without_ddp = model.module
-        else:
-            model_without_ddp = model
+        #     model_without_ddp = model.module
+        # else:
+        #     model_without_ddp = model
+        model_without_ddp = model
 
     num_params = sum(p.numel() for p in model.parameters())
     print('Number of params:', num_params)

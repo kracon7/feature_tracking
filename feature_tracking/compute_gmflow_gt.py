@@ -22,6 +22,8 @@ def get_args_parser():
                         help='where to save flow images')
     parser.add_argument('--save_raw', action='store_true',
                         help='save the raw flow')
+    parser.add_argument('--di', type=int, default=1,
+                        help="number of frame skip")
     
     return parser.parse_args()
 
@@ -67,7 +69,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     rad_colormap = MplColorHelper('twilight', -np.pi, np.pi)
-    mag_colormap = MplColorHelper('gray', 0, 20)
+    mag_colormap = MplColorHelper('gray', 0, 40)
 
     flow_mag_dir = os.path.join(args.output_dir, 'flow_mag_gt')
     flow_rad_dir = os.path.join(args.output_dir, 'flow_rad_gt')
@@ -79,28 +81,31 @@ def main():
         os.makedirs(raw_dir, exist_ok=True)
 
     num_frames = len(depth_flist)
-    for i in range(num_frames-1):
+    for i in range(num_frames - args.di):
         num = depth_flist[i].split('.')[0].split('_')[1]
         print(depth_flist[i], '  ', num)
         b_T_cam1 = np.loadtxt(os.path.join(args.pose_dir, pose_flist[i]))
-        b_T_cam2 = np.loadtxt(os.path.join(args.pose_dir, pose_flist[i+1]))
-        depth_1 = np.load(os.path.join(args.depth_dir, depth_flist[i])).astype('float')
-        depth_1 = depth_1 / 1e3
+        b_T_cam2 = np.loadtxt(os.path.join(args.pose_dir, pose_flist[i + args.di]))
+        depth_2 = np.load(os.path.join(args.depth_dir, depth_flist[i+args.di])).astype('float')
+        depth_2 = depth_2 / 1e3
 
-        depth_mask = (depth_1 == 0).reshape(depth_1.shape[0], depth_1.shape[1])
+        depth_mask = (depth_2 == 0).reshape(depth_2.shape[0], depth_2.shape[1])
         mask = depth_mask | finger_mask
 
-        pixels_1, points_1 = lift(depth_1, camera_k)
+        pixels_2, points_2 = lift(depth_2, camera_k)
 
-        cam2_T_cam1 = np.linalg.inv(b_T_cam2) @ b_T_cam1
-        points_2 = transform_points(points_1, cam2_T_cam1)
-        pixels_2 = project(points_2, camera_k)
+        cam1_T_cam2 = np.linalg.inv(b_T_cam1) @ b_T_cam2
+        points_1 = transform_points(points_2, cam1_T_cam2)
+        pixels_1 = project(points_1, camera_k)
 
-        flow = (pixels_2 - pixels_1).reshape(depth_1.shape[0], depth_1.shape[1], 2)
+        flow = (pixels_2 - pixels_1).reshape(depth_2.shape[0], depth_2.shape[1], 2)
         flow[mask] = 0
 
         # # Flip the u v channel
         # flow = flow[:,:,[1,0]]
+
+        if args.save_raw:
+            np.save(os.path.join(raw_dir, num + '.npy'), flow)        
 
         flow_mag = np.linalg.norm(flow, axis=2)
         flow_rad = np.arctan2(flow[:,:,0], flow[:,:,1])

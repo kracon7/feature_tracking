@@ -36,7 +36,7 @@ def main():
 
     for i in range(len(color_filenames) - 2):
         print("Processing frame %s"%color_filenames[i])
-        num = color_filenames[i].split('_')[-1].split('.')[0]
+        num = str(int(color_filenames[i].split('_')[-1].split('.')[0]))
         print(color_filenames[i], depth_filenames[i], mag_pred_filenames[i], rad_pred_filenames[i], mag_gt_filenames[i], rad_gt_filenames[i])
         if not (num in color_filenames[i] and num in depth_filenames[i] and
                 num in mag_pred_filenames[i] and num in rad_pred_filenames[i] and

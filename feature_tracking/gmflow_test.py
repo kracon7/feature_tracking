@@ -87,6 +87,8 @@ def get_args_parser():
                         help='not save flow as .flo')
     parser.add_argument('--mask', '-m', default='', type=str,
                         help='where to flow mask')
+    parser.add_argument('--di', type=int, default=1,
+                        help="number of frame skip")
 
     # distributed training
     parser.add_argument('--local_rank', default=0, type=int)
@@ -163,7 +165,7 @@ def main(args):
         finger_mask = finger_mask_tensor[:,:,0] > 0
 
     rad_colormap = MplColorHelper('twilight', -np.pi, np.pi)
-    mag_colormap = MplColorHelper('gray', 0, 20)
+    mag_colormap = MplColorHelper('gray', 0, 40)
 
     flow_mag_dir = os.path.join(args.output_dir, 'flow_mag_pred')
     flow_rad_dir = os.path.join(args.output_dir, 'flow_rad_pred')
@@ -178,10 +180,10 @@ def main(args):
     rel_filenames = sorted(os.listdir(args.inference_dir))
     print('%d images found' % len(abs_filenames))
 
-    for test_id in range(len(abs_filenames) - 1):
+    for test_id in range(len(abs_filenames) - args.di):
 
         image1 = read_gen(abs_filenames[test_id])
-        image2 = read_gen(abs_filenames[test_id + 1])
+        image2 = read_gen(abs_filenames[test_id + args.di])
 
         image1 = np.array(image1).astype(np.uint8)
         image2 = np.array(image2).astype(np.uint8)
@@ -199,6 +201,9 @@ def main(args):
         flow = flow_predictor.pred(image1, image2, finger_mask)
 
         flow_np = flow.cpu().numpy()
+        if args.save_raw:
+            np.save(os.path.join(raw_dir, rel_filenames[test_id].split('.')[0] + '.npy'), flow_np)
+        
         flow_mag = np.linalg.norm(flow_np, axis=2)
         flow_rad = np.arctan2(flow_np[:,:,0], flow_np[:,:,1])
         print("rad: %.3f, %.3f mag: %.3f, %.3f"%(flow_rad.min(), flow_rad.max(), 
@@ -209,7 +214,7 @@ def main(args):
         
         mag_output_path = os.path.join(flow_mag_dir, rel_filenames[test_id])
         rad_output_path = os.path.join(flow_rad_dir, rel_filenames[test_id])
-
+        
         cv2.imwrite(mag_output_path, flow_mag_vis)
         cv2.imwrite(rad_output_path, flow_rad_vis)
 

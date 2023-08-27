@@ -13,7 +13,6 @@ python gmflow_test.py \
 --inference_dir ~/tmp/gmflow_gt_slow/png/ \
 -o ~/tmp/gmflow_gt_slow/ \
 -m ~/tmp/mask.png \
---with_speed_metric \
 --padding_factor 32 \
 --upsample_factor 4 \
 --num_scales 2 \

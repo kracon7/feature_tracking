@@ -59,6 +59,7 @@ setup(
             'visualize_3d = feature_tracking.visualize_3d_tracking:main',
             'replay_3d = feature_tracking.replay_3d_tracking:main',
             'rs_pcd_snapshot = feature_tracking.rs_pcd_snapshot:main',
+            'wrist_pcd_sub = feature_tracking.wrist_pcd_subscriber:main',
         ],
     },
 )
